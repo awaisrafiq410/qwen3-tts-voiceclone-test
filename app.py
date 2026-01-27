@@ -7,8 +7,7 @@ from qwen_tts.inference.qwen3_tts_model import Qwen3TTSModel
 
 app = FastAPI()
 
-# Serve UI
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -20,8 +19,6 @@ model = Qwen3TTSModel.from_pretrained(
     device_map=device,
     torch_dtype=torch.float16 if device == "cuda" else torch.float32
 )
-
-model.eval()
 print("Model loaded in", round(time.time()-t0, 2), "seconds")
 
 @app.post("/voice-clone")
@@ -56,3 +53,12 @@ async def voice_clone(
     print("Generated in", gen_time, "seconds")
 
     return FileResponse(out_path, media_type="audio/wav", filename="clone.wav")
+
+
+
+# Serve UI
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
+
+if  __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="[IP_ADDRESS]", port=8000)
