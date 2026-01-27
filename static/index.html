@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Qwen3 Voice Clone Test</title>
+</head>
+
+<body>
+    <h2>Qwen3-TTS Voice Cloning</h2>
+
+    <form id="form">
+        <textarea name="text" placeholder="Enter text" rows="4" cols="60"></textarea><br><br>
+
+        <input type="file" name="ref_audio" accept=".wav"><br><br>
+
+        <select name="emotion">
+            <option value="">No Emotion</option>
+            <option value="Happy">Happy</option>
+            <option value="Sad">Sad</option>
+            <option value="Angry">Angry</option>
+            <option value="Calm">Calm</option>
+            <option value="Serious">Serious</option>
+        </select><br><br>
+
+        <button type="submit">Generate Voice</button>
+    </form>
+
+    <br>
+    <audio id="player" controls></audio>
+
+    <script>
+        const form = document.getElementById("form");
+        const player = document.getElementById("player");
+
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            const formData = new FormData(form);
+
+            const res = await fetch("/voice-clone", {
+                method: "POST",
+                body: formData
+            });
+
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            player.src = url;
+            player.play();
+        };
+    </script>
+</body>
+
+</html>
