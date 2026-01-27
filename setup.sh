@@ -13,9 +13,10 @@ echo "=== Install Python deps ==="
 pip install -r requirements.txt
 
 echo "=== Clone Qwen3-TTS ==="
-if [ ! -d "Qwen3-TTS-Openai-Fastapi" ]; then
-  git clone https://github.com/groxaxo/Qwen3-TTS-Openai-Fastapi.git
-fi
+git clone https://github.com/groxaxo/Qwen3-TTS-Openai-Fastapi.git
+
+echo "Checking contents of Qwen3-TTS-Openai-Fastapi:"
+ls -F Qwen3-TTS-Openai-Fastapi/
 
 cd Qwen3-TTS-Openai-Fastapi
 pip install -e ".[api]"
