@@ -20,3 +20,6 @@ venv/
 # OS specific
 .DS_Store
 Thumbs.db
+
+# Qwen3-TTS-Openai-Fastapi
+Qwen3-TTS-Openai-Fastapi/
