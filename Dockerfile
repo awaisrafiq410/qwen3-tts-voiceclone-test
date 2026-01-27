@@ -21,12 +21,15 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir scipy git+https://github.com/huggingface/transformers
 
+# Optional: Install flash-attn 2 to reduce GPU memory usage.
+RUN pip install -U flash-attn --no-build-isolation || echo "Flash Attention failed to install, skipping..."
+
 COPY handler.py .
-COPY download_weights.py .
+# COPY download_weights.py .
 
 # Bake weights into the image
 # This increases build time and image size but drastically reduces cold start time
-RUN python download_weights.py
+# RUN python download_weights.py
 
 # Clean up download script
 RUN rm download_weights.py

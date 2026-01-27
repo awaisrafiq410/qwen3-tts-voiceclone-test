@@ -1,5 +1,5 @@
 # download_weights.py
-from qwen_tts.inference.qwen3_tts_model import Qwen3TTSModel
+from qwen_tts import Qwen3TTSModel
 import torch
 
 print("Downloading and caching model weights...")
