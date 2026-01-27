@@ -18,11 +18,10 @@ RUN apt-get update && apt-get install -y \
 
 # Install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir scipy git+https://github.com/huggingface/transformers
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Optional: Install flash-attn 2 to reduce GPU memory usage.
-RUN pip install -U flash-attn --no-build-isolation || echo "Flash Attention failed to install, skipping..."
+# RUN pip install -U flash-attn --no-build-isolation || echo "Flash Attention failed to install, skipping..."
 
 COPY handler.py .
 
