@@ -1,8 +1,7 @@
-sentencepiece
-soundfile
-librosa
 fastapi
 uvicorn
 python-multipart
 hf-transfer
 runpod
+qwen-tts
+modelscope

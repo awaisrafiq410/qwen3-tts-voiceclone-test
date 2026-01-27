@@ -19,18 +19,10 @@ RUN apt-get update && apt-get install -y \
 # Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir runpod scipy git+https://github.com/huggingface/transformers
+    pip install --no-cache-dir scipy git+https://github.com/huggingface/transformers
 
-# clone repo
-RUN git clone https://github.com/Qwen/Qwen3-TTS-Openai-Fastapi.git
-
-# Copy application code
-COPY Qwen3-TTS-Openai-Fastapi ./Qwen3-TTS-Openai-Fastapi
 COPY handler.py .
 COPY download_weights.py .
-
-# Include the source directory in PYTHONPATH
-ENV PYTHONPATH="/app/Qwen3-TTS-Openai-Fastapi"
 
 # Bake weights into the image
 # This increases build time and image size but drastically reduces cold start time

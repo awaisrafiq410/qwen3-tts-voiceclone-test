@@ -6,7 +6,7 @@ import numpy as np
 import base64
 import io
 import time
-from qwen_tts.inference.qwen3_tts_model import Qwen3TTSModel
+from qwen_tts import Qwen3TTSModel
 
 # --- 1. Global Model Initialization (Cold Start) ---
 print("Initializing RunPod Handler...")

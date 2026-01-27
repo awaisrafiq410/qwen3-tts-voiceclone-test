@@ -3,7 +3,7 @@ import torch, librosa, soundfile as sf
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from qwen_tts.inference.qwen3_tts_model import Qwen3TTSModel
+from qwen_tts import Qwen3TTSModel
 
 app = FastAPI()
 
