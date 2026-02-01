@@ -38,6 +38,9 @@ try:
 
 except Exception as e:
     print("FAILED to load model:", e)
+    if torch.cuda.is_available():
+        print("--- CUDA MEMORY SUMMARY ---")
+        print(torch.cuda.memory_summary())
     model = None
 
 # --- HELPERS ---
@@ -72,7 +75,7 @@ async def handler(job):
 
     # Split text
     from utils import smart_split_text
-    chunks = smart_split_text(text, max_length=800)  # larger chunks = faster
+    chunks = smart_split_text(text, max_length=3000)  # larger chunks = faster
 
     audio_parts = []
     final_sr = None
