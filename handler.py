@@ -9,6 +9,8 @@ import numpy as np
 import base64
 import io
 import time
+import uuid
+import boto3
 from qwen_tts import Qwen3TTSModel
 
 print("Initializing RunPod Handler...")
@@ -55,6 +57,49 @@ def encode_audio(audio_data, sr):
     buffer.seek(0)
     return base64.b64encode(buffer.read()).decode("utf-8")
 
+def save_to_r2(audio_data, sr):
+    print("Saving to Cloudflare R2...")
+    
+    account_id = os.environ.get("R2_ACCOUNT_ID")
+    access_key = os.environ.get("R2_ACCESS_KEY_ID")
+    secret_key = os.environ.get("R2_SECRET_ACCESS_KEY")
+    bucket_name = os.environ.get("R2_BUCKET_NAME")
+    subfolder = os.environ.get("R2_SUBFOLDER", "")
+    
+    if not all([account_id, access_key, secret_key, bucket_name]):
+        raise ValueError("Missing R2 configuration environment variables.")
+
+    # Generate filename
+    filename = f"{uuid.uuid4()}.wav"
+    if subfolder:
+        # ensure subfolder doesn't start with / but ends with /
+        subfolder = subfolder.strip("/")
+        key = f"{subfolder}/{filename}"
+    else:
+        key = filename
+        
+    print(f"Uploading to bucket: {bucket_name}, key: {key}")
+
+    # Prepare audio buffer
+    buffer = io.BytesIO()
+    sf.write(buffer, audio_data, sr, format="WAV")
+    buffer.seek(0)
+    
+    # Initialize S3 client for R2
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=f"https://{account_id}.r2.cloudflarestorage.com",
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key
+    )
+
+    s3.upload_fileobj(buffer, bucket_name, key)
+    print("Upload successful.")
+    
+    # Construct URL (assuming public access or just returning key)
+    # If custom domain is used, user might want that. For now, returning key.
+    return key
+
 # --- HANDLER ---
 async def handler(job):
     start = time.time()
@@ -97,10 +142,18 @@ async def handler(job):
     stitched = np.concatenate(audio_parts)
     b64_out = encode_audio(stitched, final_sr)
 
+    # --- R2 OPTIONAL UPLOAD ---
+    r2_key = None
+    try:
+        r2_key = save_to_r2(stitched, final_sr)
+    except Exception as e:
+        print(f"R2 Upload Failed (non-blocking): {e}")
+
     return {
         "audio": b64_out,
         "sr": final_sr,
         "format": "wav",
+        "r2_key": r2_key,
         "time": round(time.time() - start, 2),
         "gpu_mem_mb": round(torch.cuda.max_memory_allocated() / 1024**2, 2)
     }

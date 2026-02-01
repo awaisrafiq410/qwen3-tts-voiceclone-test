@@ -5,3 +5,5 @@ hf-transfer
 runpod
 qwen-tts
 modelscope
+python-dotenv
+boto3
