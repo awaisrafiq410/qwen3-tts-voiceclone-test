@@ -37,17 +37,39 @@ async def voice_clone(
 
     ref_audio_data, sr = librosa.load(ref_path, sr=None, mono=True)
 
-    if emotion:
-        text = f"[Emotion: {emotion}] " + text
+    # Chunking logic
+    from utils import smart_split_text
+    import numpy as np
+    
+    text_chunks = smart_split_text(text, max_length=500)
+    all_audio = []
+    final_sr = None
+    
+    print(f"Processing {len(text_chunks)} chunks...")
+    
+    for i, chunk in enumerate(text_chunks):
+        input_text = chunk
+        if emotion:
+            input_text = f"[Emotion: {emotion}] " + chunk
+            
+        wavs, out_sr = model.generate_voice_clone(
+            text=input_text,
+            ref_audio=(ref_audio_data, sr),
+            ref_text=None,
+            x_vector_only_mode=True
+        )
+        
+        if wavs:
+            all_audio.append(wavs[0])
+            final_sr = out_sr
 
-    wavs, out_sr = model.generate_voice_clone(
-        text=text,
-        ref_audio=(ref_audio_data, sr),
-        ref_text=None,
-        x_vector_only_mode=True
-    )
-
-    sf.write(out_path, wavs[0], out_sr)
+    if all_audio:
+        stitched_audio = np.concatenate(all_audio)
+        sf.write(out_path, stitched_audio, final_sr)
+    else:
+        # Fallback or error handling
+        print("No audio generated")
+        return {"error": "Generation failed"}
 
     gen_time = round(time.time() - start_time, 2)
     print("Generated in", gen_time, "seconds")

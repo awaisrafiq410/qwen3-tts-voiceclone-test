@@ -23,6 +23,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Optional: Install flash-attn 2 to reduce GPU memory usage.
 # RUN pip install -U flash-attn --no-build-isolation || echo "Flash Attention failed to install, skipping..."
 
+COPY utils.py .
 COPY handler.py .
 
 # Start the handler
