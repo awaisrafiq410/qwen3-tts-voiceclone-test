@@ -1,10 +1,11 @@
+# ---------------- ENV (MUST be first) ----------------
 import os
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
+# ---------------- Imports ----------------
 import runpod
 import torch
 import soundfile as sf
-import librosa
 import numpy as np
 import base64
 import io
@@ -12,80 +13,69 @@ import time
 import uuid
 import boto3
 from qwen_tts import Qwen3TTSModel
+import soundfile as sf
 
 print("Initializing RunPod Handler...")
 
-# --- HARD GPU CHECK ---
+# ---------------- CUDA CHECK ----------------
 if not torch.cuda.is_available():
-    raise RuntimeError("CUDA not available in this worker")
+    raise RuntimeError("CUDA not available")
 
-# --- CLEAN CUDA STATE ---
 torch.cuda.empty_cache()
 torch.cuda.reset_peak_memory_stats()
 
 print("CUDA device:", torch.cuda.get_device_name(0))
 
-# --- MODEL LOAD (FIXED) ---
+# ---------------- MODEL LOAD ----------------
+model = None
 try:
-    print("Loading model...")
     t0 = time.time()
-
     model = Qwen3TTSModel.from_pretrained(
         "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
-        device_map={"": "cuda:0"},   # 👈 THIS IS CRITICAL
+        device_map={"": "cuda:0"},
         torch_dtype=torch.float16
     )
-
-    print(f"Model loaded in {round(time.time() - t0, 2)}s")
-
+    print("Model loaded in", round(time.time() - t0, 2), "s")
 except Exception as e:
-    print("FAILED to load model:", e)
-    if torch.cuda.is_available():
-        print("--- CUDA MEMORY SUMMARY ---")
-        print(torch.cuda.memory_summary())
+    print("MODEL LOAD FAILED:", e)
+    print(torch.cuda.memory_summary())
     model = None
 
-# --- HELPERS ---
-def decode_audio(base64_str):
-    audio_bytes = base64.b64decode(base64_str)
-    audio_buffer = io.BytesIO(audio_bytes)
-    return librosa.load(audio_buffer, sr=None, mono=True)
+# ---------------- HELPERS ----------------
+def decode_audio(b64):
+    audio_bytes = base64.b64decode(b64)
+    buf = io.BytesIO(audio_bytes)
+    audio, sr = sf.read(buf)
+    if audio.ndim > 1:
+        audio = audio.mean(axis=1)
+    return audio.astype(np.float32), sr
 
-def encode_audio(audio_data, sr):
-    buffer = io.BytesIO()
-    sf.write(buffer, audio_data, sr, format="WAV")
-    buffer.seek(0)
-    return base64.b64encode(buffer.read()).decode("utf-8")
+def encode_audio(audio, sr):
+    buf = io.BytesIO()
+    sf.write(buf, audio, sr, format="WAV")
+    buf.seek(0)
+    return base64.b64encode(buf.read()).decode()
 
 def save_to_r2(audio_data, sr):
     print("Saving to Cloudflare R2...")
-    
+
     account_id = os.environ.get("R2_ACCOUNT_ID")
     access_key = os.environ.get("R2_ACCESS_KEY_ID")
     secret_key = os.environ.get("R2_SECRET_ACCESS_KEY")
     bucket_name = os.environ.get("R2_BUCKET_NAME")
     subfolder = os.environ.get("R2_SUBFOLDER", "")
-    
+
     if not all([account_id, access_key, secret_key, bucket_name]):
-        raise ValueError("Missing R2 configuration environment variables.")
+        raise ValueError("Missing R2 configuration environment variables")
 
-    # Generate filename
     filename = f"{uuid.uuid4()}.wav"
-    if subfolder:
-        # ensure subfolder doesn't start with / but ends with /
-        subfolder = subfolder.strip("/")
-        key = f"{subfolder}/{filename}"
-    else:
-        key = filename
-        
-    print(f"Uploading to bucket: {bucket_name}, key: {key}")
+    key = f"{subfolder.strip('/')}/{filename}" if subfolder else filename
 
-    # Prepare audio buffer
+    # Write WAV to memory
     buffer = io.BytesIO()
     sf.write(buffer, audio_data, sr, format="WAV")
     buffer.seek(0)
-    
-    # Initialize S3 client for R2
+
     s3 = boto3.client(
         "s3",
         endpoint_url=f"https://{account_id}.r2.cloudflarestorage.com",
@@ -94,13 +84,11 @@ def save_to_r2(audio_data, sr):
     )
 
     s3.upload_fileobj(buffer, bucket_name, key)
-    print("Upload successful.")
-    
-    # Construct URL (assuming public access or just returning key)
-    # If custom domain is used, user might want that. For now, returning key.
+
+    print("R2 upload complete:", key)
     return key
 
-# --- HANDLER ---
+# ---------------- HANDLER ----------------
 async def handler(job):
     start = time.time()
 
@@ -115,39 +103,48 @@ async def handler(job):
     if not text or not ref_audio_b64:
         return {"error": "Missing text or ref_audio"}
 
-    # Decode audio
+    # Decode reference audio
     ref_audio, sr = decode_audio(ref_audio_b64)
 
-    # Split text
+    # Split text (SAFE SIZE)
     from utils import smart_split_text
-    chunks = smart_split_text(text, max_length=3000)  # larger chunks = faster
+    chunks = smart_split_text(text, max_length=1000)
 
     audio_parts = []
     final_sr = None
 
-    for chunk in chunks:
-        if emotion:
-            chunk = f"[Emotion: {emotion}] " + chunk
+    with torch.inference_mode():
+        for chunk in chunks:
+            if emotion:
+                chunk = f"[Emotion: {emotion}] " + chunk
 
-        wavs, out_sr = model.generate_voice_clone(
-            text=chunk,
-            ref_audio=(ref_audio, sr),
-            ref_text=None,
-            x_vector_only_mode=True
-        )
+            wavs, out_sr = model.generate_voice_clone(
+                text=chunk,
+                ref_audio=(ref_audio, sr),
+                ref_text=None,
+                x_vector_only_mode=True
+            )
 
-        audio_parts.append(wavs[0])
-        final_sr = out_sr
+            audio_parts.append(wavs[0])
+            final_sr = out_sr
 
     stitched = np.concatenate(audio_parts)
+
+    # Encode
     b64_out = encode_audio(stitched, final_sr)
 
-    # --- R2 OPTIONAL UPLOAD ---
+    # Optional R2 upload (non-blocking safety)
     r2_key = None
     try:
-        r2_key = save_to_r2(stitched, final_sr)
+        if os.environ.get("R2_BUCKET_NAME"):
+            r2_key = save_to_r2(stitched, final_sr)
     except Exception as e:
-        print(f"R2 Upload Failed (non-blocking): {e}")
+        print("R2 upload failed:", e)
+
+    # ---- cleanup for warm worker ----
+    del ref_audio
+    del audio_parts
+    torch.cuda.empty_cache()
 
     return {
         "audio": b64_out,
@@ -158,6 +155,6 @@ async def handler(job):
         "gpu_mem_mb": round(torch.cuda.max_memory_allocated() / 1024**2, 2)
     }
 
-# --- START ---
+# ---------------- START ----------------
 if __name__ == "__main__":
     runpod.serverless.start({"handler": handler})
