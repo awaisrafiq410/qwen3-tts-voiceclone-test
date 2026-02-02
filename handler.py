@@ -17,6 +17,8 @@ import soundfile as sf
 
 print("Initializing RunPod Handler...")
 
+CHUNK_SIZE = os.getenv("CHUNK_SIZE", 1000)
+
 # ---------------- CUDA CHECK ----------------
 if not torch.cuda.is_available():
     raise RuntimeError("CUDA not available")
@@ -108,7 +110,7 @@ async def handler(job):
 
     # Split text (SAFE SIZE)
     from utils import smart_split_text
-    chunks = smart_split_text(text, max_length=1000)
+    chunks = smart_split_text(text, max_length=CHUNK_SIZE)
 
     audio_parts = []
     final_sr = None
